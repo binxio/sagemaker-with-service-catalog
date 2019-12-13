@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Datalake service-catalog Portfolio, Products, ProductAssociations, Launch Role and Principle Associations."
+
+Parameters:
+  PortfolioBucketName:
+    Type: String
+  SupportUrl:
+    Type: String
+
+Resources:
+  DatalakePortfolio:
+    Type: "AWS::ServiceCatalog::Portfolio"
+    Properties:
+      Description: "A portfolio of self-service Datalake."
+      DisplayName: "Datalake Portfolio"
+      ProviderName: "Datalake"
+
+  SagemakerProduct:
+    Type: AWS::ServiceCatalog::CloudFormationProduct
+    Properties:
+      Description: "Sagemaker Product"
+      Distributor: "Datalake"
+      Name: "Sagemaker"
+      Owner: "Binx"
+      ProvisioningArtifactParameters:
+        - Description: "Initial version"
+          DisableTemplateValidation: False
+          Info:
+            LoadTemplateFromURL: !Sub "https://s3.amazonaws.com/${PortfolioBucketName}/products/sagemaker-instance.yml"
+          Name: "v1"
+      SupportEmail: "datalake@binx.io"
+      SupportUrl: !Ref SupportUrl
+
+  SagemakerPortfolioProductAssociation:
+    Type: "AWS::ServiceCatalog::PortfolioProductAssociation"
+    Properties:
+      PortfolioId:
+        Ref: DatalakePortfolio
+      ProductId:
+        Ref: SagemakerProduct
+
+  SagemakerRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref AWS::AccountId
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: "AllowProductProvision"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - servicecatalog:*
+                Resource: "*"
+
+  DatalakePortfolioPrincipalAssociation:
+    Type: "AWS::ServiceCatalog::PortfolioPrincipalAssociation"
+    Properties:
+      PortfolioId:
+        Ref: DatalakePortfolio
+      PrincipalARN: !GetAtt SagemakerRole.Arn
+      PrincipalType: "IAM"
+
+  SagemakerLaunchRoleConstraint:
+    Type: AWS::ServiceCatalog::LaunchRoleConstraint
+    Properties:
+      Description: "Constraint to run Sagemaker and S3 in Cloudformation."
+      PortfolioId:
+        Ref: DatalakePortfolio
+      ProductId:
+        Ref: SagemakerProduct
+      RoleArn:
+        Fn::GetAtt: [ LaunchConstraintRole, Arn ]
+    DependsOn: [ DatalakePortfolioPrincipalAssociation, LaunchConstraintRole ]
+
+  LaunchConstraintRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Path: "/"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "servicecatalog.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "AllowProductLaunch"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: '*'
+                Effect: "Allow"
+                Action:
+                  # Permissions required for the provisioning of the Sagemaker
+                  - cloudformation:GetTemplateSummary
+                  - s3:GetObject
+                  - sagemaker:*
+                  - s3:*
+                  - iam:Get*
+                  - iam:PassRole
+                  - ec2:*
+                  - kms:*
+              - Resource:
+                  - "arn:aws:iam::*:role/SC-*"
+                  - "arn:aws:sts::*:assumed-role/datalake-service-catalog-LaunchConstraintRole-*"
+                  - "arn:aws:iam::*:role/sagemaker-notebook-iam-role"
+                Effect: "Allow"
+                Action:
+                  - iam:*
+              - Resource:
+                  - "arn:aws:cloudformation:*:*:stack/SC-*"
+                  - "arn:aws:cloudformation:*:*:changeSet/SC-*"
+                Effect: "Allow"
+                Action:
+                  # Permissions required by AWS Service Catalog to create stack
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStacks
+                  - cloudformation:SetStackPolicy
+                  - cloudformation:ValidateTemplate
+                  - cloudformation:UpdateStack

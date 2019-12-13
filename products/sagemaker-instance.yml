@@ -1,0 +1,16 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Sagemaker NotebookInstance"
+Resources:
+  BasicNotebookInstance:
+    Type: "AWS::SageMaker::NotebookInstance"
+    Properties:
+      InstanceType: "ml.t2.large"
+      VolumeSizeInGB: 5
+
+Outputs:
+  NotebookInstanceName:
+    Value:
+      Fn::GetAtt: [ BasicNotebookInstance, NotebookInstanceName ]
+  NotebookInstanceId:
+    Value:
+      Ref: BasicNotebookInstance
